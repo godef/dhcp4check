@@ -6,11 +6,13 @@ import (
 
 	"github.com/mingzhaodotname/dhcp4client"
 	"time"
-	dhcp "github.com/krolaw/dhcp4"
+	//dhcp "github.com/krolaw/dhcp4"
 	"math/rand"
 	//"strconv"
 	//"github.com/krolaw/dhcp4/conn"
 	"flag"
+	"strconv"
+	"github.com/mingzhaodotname/dhcp4"
 )
 
 func main() {
@@ -45,7 +47,7 @@ func main() {
 	//SendDiscovery()
 }
 
-func ListenAndServe(handler dhcp.Handler, ip net.IP, mac string) error {
+func ListenAndServe(handler Handler, ip net.IP, mac string) error {
 	l, err := net.ListenPacket("udp4", ":68")
 	//conn, err := net.ListenUDP("udp4", &c.laddr)
 	if err != nil {
@@ -65,8 +67,64 @@ func ListenAndServe(handler dhcp.Handler, ip net.IP, mac string) error {
 	}
 	log.Println("sent discovery packet successfully.")
 
-	return dhcp.Serve(l, handler)
+	return Serve(l, handler)
 }
+
+type Handler interface {
+	ServeDHCP(req dhcp4.Packet, msgType dhcp4.MessageType, options dhcp4.Options) dhcp4.Packet
+}
+
+// ServeConn is the bare minimum connection functions required by Serve()
+// It allows you to create custom connections for greater control,
+// such as ServeIfConn (see serverif.go), which locks to a given interface.
+type ServeConn interface {
+	ReadFrom(b []byte) (n int, addr net.Addr, err error)
+	WriteTo(b []byte, addr net.Addr) (n int, err error)
+}
+
+func Serve(conn ServeConn, handler Handler) error {
+	buffer := make([]byte, 1500)
+	for {
+		n, addr, err := conn.ReadFrom(buffer)
+		log.Println("DHCP server address: ", addr)
+		if err != nil {
+			return err
+		}
+		if n < 240 { // Packet too small to be DHCP
+			continue
+		}
+		req := dhcp4.Packet(buffer[:n])
+		if req.HLen() > 16 { // Invalid size
+			continue
+		}
+		options := req.ParseOptions()
+		var reqType dhcp4.MessageType
+		if t := options[dhcp4.OptionDHCPMessageType]; len(t) != 1 {
+			continue
+		} else {
+			reqType = dhcp4.MessageType(t[0])
+			if reqType < dhcp4.Discover || reqType > dhcp4.Inform {
+				continue
+			}
+		}
+		if res := handler.ServeDHCP(req, reqType, options); res != nil {
+			// If IP not available, broadcast
+			ipStr, portStr, err := net.SplitHostPort(addr.String())
+			if err != nil {
+				return err
+			}
+
+			if net.ParseIP(ipStr).Equal(net.IPv4zero) || req.Broadcast() {
+				port, _ := strconv.Atoi(portStr)
+				addr = &net.UDPAddr{IP: net.IPv4bcast, Port: port}
+			}
+			if _, e := conn.WriteTo(res, addr); e != nil {
+				return e
+			}
+		}
+	}
+}
+
 
 // Example using DHCP with a single network interface device
 func ExampleHandler(ip net.IP, mac string) {
@@ -80,15 +138,15 @@ func ExampleHandler(ip net.IP, mac string) {
 		start:         net.IP{192, 168, 1, 3},
 		leaseRange:    50,
 		leases:        make(map[int]lease, 10),
-		options: dhcp.Options{
-			dhcp.OptionSubnetMask:       []byte{255, 255, 255, 0},
-			dhcp.OptionRouter:           []byte(serverIP), // Presuming Server is also your router
-			dhcp.OptionDomainNameServer: []byte(serverIP), // Presuming Server is also your DNS server
+		options: dhcp4.Options{
+			dhcp4.OptionSubnetMask:       []byte{255, 255, 255, 0},
+			dhcp4.OptionRouter:           []byte(serverIP), // Presuming Server is also your router
+			dhcp4.OptionDomainNameServer: []byte(serverIP), // Presuming Server is also your DNS server
 		},
 	}
 	log.Fatal(ListenAndServe(handler, ip, mac))
-	// log.Fatal(dhcp.Serve(dhcp.NewUDP4BoundListener("eth0",":67"), handler)) // Select interface on multi interface device - just linux for now
-	// log.Fatal(dhcp.Serve(dhcp.NewUDP4FilterListener("en0",":67"), handler)) // Work around for other OSes
+	// log.Fatal(dhcp4.Serve(dhcp4.NewUDP4BoundListener("eth0",":67"), handler)) // Select interface on multi interface device - just linux for now
+	// log.Fatal(dhcp4.Serve(dhcp4.NewUDP4FilterListener("en0",":67"), handler)) // Work around for other OSes
 }
 
 type lease struct {
@@ -98,20 +156,20 @@ type lease struct {
 
 type DHCPHandler struct {
 	ip            net.IP        // Server IP to use
-	options       dhcp.Options  // Options to send to DHCP Clients
+	options       dhcp4.Options  // Options to send to DHCP Clients
 	start         net.IP        // Start of IP range to distribute
 	leaseRange    int           // Number of IPs to distribute (starting from start)
 	leaseDuration time.Duration // Lease period
 	leases        map[int]lease // Map to keep track of leases
 }
 
-func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options dhcp.Options) (d dhcp.Packet) {
+func (h *DHCPHandler) ServeDHCP(p dhcp4.Packet, msgType dhcp4.MessageType, options dhcp4.Options) (d dhcp4.Packet) {
 	switch msgType {
 
-	case dhcp.Offer:
+	case dhcp4.Offer:
 		log.Println("=== minglog: dhcp Offer", p, options)
 
-	case dhcp.Discover:
+	case dhcp4.Discover:
 		log.Println("=== minglog: dhcp Discover", p, options)
 		return nil
 
@@ -129,31 +187,31 @@ func (h *DHCPHandler) ServeDHCP(p dhcp.Packet, msgType dhcp.MessageType, options
 		reply:
 		log.Println("=== minglog: dhcp Discover, free:", free)
 
-		return dhcp.ReplyPacket(p, dhcp.Offer, h.ip, dhcp.IPAdd(h.start, free), h.leaseDuration,
-			h.options.SelectOrderOrAll(options[dhcp.OptionParameterRequestList]))
+		return dhcp4.ReplyPacket(p, dhcp4.Offer, h.ip, dhcp4.IPAdd(h.start, free), h.leaseDuration,
+			h.options.SelectOrderOrAll(options[dhcp4.OptionParameterRequestList]))
 
-	case dhcp.Request:
+	case dhcp4.Request:
 		log.Println("=== minglog: dhcp Request")
-		if server, ok := options[dhcp.OptionServerIdentifier]; ok && !net.IP(server).Equal(h.ip) {
+		if server, ok := options[dhcp4.OptionServerIdentifier]; ok && !net.IP(server).Equal(h.ip) {
 			return nil // Message not for this dhcp server
 		}
-		reqIP := net.IP(options[dhcp.OptionRequestedIPAddress])
+		reqIP := net.IP(options[dhcp4.OptionRequestedIPAddress])
 		if reqIP == nil {
 			reqIP = net.IP(p.CIAddr())
 		}
 
 		if len(reqIP) == 4 && !reqIP.Equal(net.IPv4zero) {
-			if leaseNum := dhcp.IPRange(h.start, reqIP) - 1; leaseNum >= 0 && leaseNum < h.leaseRange {
+			if leaseNum := dhcp4.IPRange(h.start, reqIP) - 1; leaseNum >= 0 && leaseNum < h.leaseRange {
 				if l, exists := h.leases[leaseNum]; !exists || l.nic == p.CHAddr().String() {
 					h.leases[leaseNum] = lease{nic: p.CHAddr().String(), expiry: time.Now().Add(h.leaseDuration)}
-					return dhcp.ReplyPacket(p, dhcp.ACK, h.ip, reqIP, h.leaseDuration,
-						h.options.SelectOrderOrAll(options[dhcp.OptionParameterRequestList]))
+					return dhcp4.ReplyPacket(p, dhcp4.ACK, h.ip, reqIP, h.leaseDuration,
+						h.options.SelectOrderOrAll(options[dhcp4.OptionParameterRequestList]))
 				}
 			}
 		}
-		return dhcp.ReplyPacket(p, dhcp.NAK, h.ip, nil, 0, nil)
+		return dhcp4.ReplyPacket(p, dhcp4.NAK, h.ip, nil, 0, nil)
 
-	case dhcp.Release, dhcp.Decline:
+	case dhcp4.Release, dhcp4.Decline:
 		nic := p.CHAddr().String()
 		for i, v := range h.leases {
 			if v.nic == nic {
