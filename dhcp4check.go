@@ -10,71 +10,55 @@ import (
 	"math/rand"
 	//"strconv"
 	//"github.com/krolaw/dhcp4/conn"
+	"flag"
 )
 
 func main() {
 	log.Println("this is main")
+	cidr := flag.String("cidr", "", "CIDR of an interface, e.g. 192.168.1.3/24")
+	mac := flag.String("mac", "", "MAC address")
+	flag.Parse()
+	log.Println("cidr: ", *cidr)
+	ip, ipnet, err := net.ParseCIDR(*cidr)
+	if err != nil {
+		log.Fatal("error: ", err)
+	}
+	log.Println("ip: ", ip, ", mask: ", ipnet.Mask, ", ipnet.ip: ", ipnet.IP)
+	ipnet.Mask[0] = 255 ^ ipnet.Mask[0]
+	ipnet.Mask[1] = 255 ^ ipnet.Mask[1]
+	ipnet.Mask[2] = 255 ^ ipnet.Mask[2]
+	ipnet.Mask[3] = 255 ^ ipnet.Mask[3]
+
+	ip[12] = ipnet.Mask[0] | ip[12]
+	ip[13] = ipnet.Mask[1] | ip[13]
+	ip[14] = ipnet.Mask[2] | ip[14]
+	ip[15] = ipnet.Mask[3] | ip[15]
+	log.Println("ip: ", ip, ", mask: ", ipnet.Mask, ", ipnet.ip: ", ipnet.IP)
+
+	//ipnet.Mask
+
+	log.Println("mac: ", *mac)
 	//go SendDiscovery()
-	ExampleHandler()
+	ExampleHandler(ip, *mac)
 
 	//go ExampleHandler()
 	//SendDiscovery()
 }
 
-func SendDiscovery() {
-	log.Println("SendDiscovery")
-	time.Sleep(2 * time.Second)
-	log.Println("SendDiscovery after sleeping")
-	var err error
-
-	//Create a connection to use
-	//We need to set the connection ports to 1068 and 1067 so we don't need root access
-	c, err := dhcp4client.NewInetSock(
-		// 0.0.0.0: can not send: network is unreachable
-		//dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
-
-		// for test on 192.168.1.2
-		//dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(192, 168, 1, 2), Port: 68}),
-
-		dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(192, 168, 1, 3), Port: 68}),
-		//dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 1068}),
-		dhcp4client.SetRemoteAddr(net.UDPAddr{IP: net.IPv4bcast, Port: 67}))
-	if err != nil {
-		log.Println("Client Connection Generation:" + err.Error())
-	}
-	defer c.Close()
-
-	m, err := net.ParseMAC("08-00-27-00-A8-E8")
-	if err != nil {
-		log.Printf("MAC Error:%v\n", err)
-	}
-	exampleClient, err := dhcp4client.New(dhcp4client.HardwareAddr(m), dhcp4client.Connection(c))
-	if err != nil {
-		log.Printf("Error:%v\n", err)
-		return
-	}
-	defer exampleClient.Close()
-
-	//success, acknowledgementpacket, err := exampleClient.Request()
-	success, acknowledgementpacket, err := exampleClient.DiscoverAndOffer()
-
-	log.Println("Success:", success)
-	log.Println("Packet:", acknowledgementpacket)
-}
-
-func ListenAndServe(handler dhcp.Handler) error {
+func ListenAndServe(handler dhcp.Handler, ip net.IP, mac string) error {
 	l, err := net.ListenPacket("udp4", ":68")
 	//conn, err := net.ListenUDP("udp4", &c.laddr)
 	if err != nil {
 		return err
 	}
 	defer l.Close()
+	log.Println("l.LocalAddr(): ", l.LocalAddr())
 
 	// Write DHCP request packet
 	log.Println("sending discovery packet")
-	dp := dhcp4client.DiscoverPacket();
-	addr := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 105), Port: 67}
-	//addr := &net.UDPAddr{IP: net.IPv4bcast, Port: 67}
+	dp := dhcp4client.DiscoverPacket(mac);
+	//addr := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 255), Port: 67}
+	addr := &net.UDPAddr{IP: ip, Port: 67}
 
 	if _, e := l.WriteTo(dp, addr); e != nil {
 		return e
@@ -85,7 +69,7 @@ func ListenAndServe(handler dhcp.Handler) error {
 }
 
 // Example using DHCP with a single network interface device
-func ExampleHandler() {
+func ExampleHandler(ip net.IP, mac string) {
 	log.Println("minglog: started ExampleHandler")
 	// serverIP := net.IP{10, 0, 2, 15}
 	serverIP := net.IP{192, 168, 1, 3}
@@ -102,7 +86,7 @@ func ExampleHandler() {
 			dhcp.OptionDomainNameServer: []byte(serverIP), // Presuming Server is also your DNS server
 		},
 	}
-	log.Fatal(ListenAndServe(handler))
+	log.Fatal(ListenAndServe(handler, ip, mac))
 	// log.Fatal(dhcp.Serve(dhcp.NewUDP4BoundListener("eth0",":67"), handler)) // Select interface on multi interface device - just linux for now
 	// log.Fatal(dhcp.Serve(dhcp.NewUDP4FilterListener("en0",":67"), handler)) // Work around for other OSes
 }
@@ -192,4 +176,46 @@ func (h *DHCPHandler) freeLease() int {
 		}
 	}
 	return -1
+}
+
+
+func SendDiscovery() {
+	log.Println("SendDiscovery")
+	time.Sleep(2 * time.Second)
+	log.Println("SendDiscovery after sleeping")
+	var err error
+
+	//Create a connection to use
+	//We need to set the connection ports to 1068 and 1067 so we don't need root access
+	c, err := dhcp4client.NewInetSock(
+		// 0.0.0.0: can not send: network is unreachable
+		//dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 68}),
+
+		// for test on 192.168.1.2
+		//dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(192, 168, 1, 2), Port: 68}),
+
+		dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(192, 168, 1, 3), Port: 68}),
+		//dhcp4client.SetLocalAddr(net.UDPAddr{IP: net.IPv4(0, 0, 0, 0), Port: 1068}),
+		dhcp4client.SetRemoteAddr(net.UDPAddr{IP: net.IPv4bcast, Port: 67}))
+	if err != nil {
+		log.Println("Client Connection Generation:" + err.Error())
+	}
+	defer c.Close()
+
+	m, err := net.ParseMAC("08-00-27-00-A8-E8")
+	if err != nil {
+		log.Printf("MAC Error:%v\n", err)
+	}
+	exampleClient, err := dhcp4client.New(dhcp4client.HardwareAddr(m), dhcp4client.Connection(c))
+	if err != nil {
+		log.Printf("Error:%v\n", err)
+		return
+	}
+	defer exampleClient.Close()
+
+	//success, acknowledgementpacket, err := exampleClient.Request()
+	success, acknowledgementpacket, err := exampleClient.DiscoverAndOffer()
+
+	log.Println("Success:", success)
+	log.Println("Packet:", acknowledgementpacket)
 }
