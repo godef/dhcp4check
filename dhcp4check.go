@@ -163,11 +163,32 @@ type DHCPHandler struct {
 	leases        map[int]lease // Map to keep track of leases
 }
 
+func PrintPacket(p dhcp4.Packet) {
+	log.Println("OpCode    :", p.OpCode())
+	log.Println("HType     :", p.HType())
+	log.Println("HLen      :", p.HLen())
+	log.Println("Hops      :", p.Hops())
+	log.Println("XId       :", p.XId())
+	log.Println("Secs      :", p.Secs())
+	log.Println("Flags     :", p.Flags())
+	log.Println("CIAddr    :", p.CIAddr())
+	log.Println("YIAddr    :", p.YIAddr())
+	log.Println("SIAddr    :", p.SIAddr())
+	log.Println("GIAddr    :", p.GIAddr())
+	log.Println("CHAddr    :", p.CHAddr())
+	log.Println("Broadcast :", p.Broadcast())
+	log.Println("Options   :", p.Options())
+	for k, v := range p.Options() {
+		log.Println("Option   name:", k, ", value:", v)
+	}
+}
+
 func (h *DHCPHandler) ServeDHCP(p dhcp4.Packet, msgType dhcp4.MessageType, options dhcp4.Options) (d dhcp4.Packet) {
 	switch msgType {
 
 	case dhcp4.Offer:
 		log.Println("=== minglog: dhcp Offer", p, options)
+		PrintPacket(p)
 
 	case dhcp4.Discover:
 		log.Println("=== minglog: dhcp Discover", p, options)
