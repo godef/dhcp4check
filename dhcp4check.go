@@ -16,11 +16,11 @@ import (
 )
 
 func main() {
-	log.Println("this is main")
+	//log.Println("this is main")
 	cidr := flag.String("cidr", "", "CIDR of an interface, e.g. 192.168.1.3/24")
 	mac := flag.String("mac", "", "MAC address")
 	flag.Parse()
-	log.Println("cidr: ", *cidr)
+	log.Println("CIDR: ", *cidr)
 	ip, ipnet, err := net.ParseCIDR(*cidr)
 	if err != nil {
 		log.Fatal("error: ", err)
@@ -39,7 +39,7 @@ func main() {
 
 	//ipnet.Mask
 
-	log.Println("mac: ", *mac)
+	log.Println("MAC: ", *mac)
 	//go SendDiscovery()
 	ExampleHandler(ip, *mac)
 
@@ -128,7 +128,7 @@ func Serve(conn ServeConn, handler Handler) error {
 
 // Example using DHCP with a single network interface device
 func ExampleHandler(ip net.IP, mac string) {
-	log.Println("minglog: started ExampleHandler")
+	//log.Println("minglog: started ExampleHandler")
 	// serverIP := net.IP{10, 0, 2, 15}
 	serverIP := net.IP{192, 168, 1, 3}
 	handler := &DHCPHandler{
@@ -177,9 +177,15 @@ func PrintPacket(p dhcp4.Packet) {
 	log.Println("GIAddr    :", p.GIAddr())
 	log.Println("CHAddr    :", p.CHAddr())
 	log.Println("Broadcast :", p.Broadcast())
-	log.Println("Options   :", p.Options())
-	for k, v := range p.Options() {
-		log.Println("Option   name:", k, ", value:", v)
+	//log.Println("Options   :", p.Options())
+	//for k, v := range p.Options() {
+	//	name := OptionNameDict[k]
+	//	log.Println("Option   name:", name, ", value:", v)
+	//}
+	options := p.ParseOptions()
+	for code, v := range options {
+		name := OptionNameDict[code]
+		log.Println(name, " : ", v)
 	}
 }
 
@@ -187,7 +193,7 @@ func (h *DHCPHandler) ServeDHCP(p dhcp4.Packet, msgType dhcp4.MessageType, optio
 	switch msgType {
 
 	case dhcp4.Offer:
-		log.Println("=== minglog: dhcp Offer", p, options)
+		log.Println("=== dhcp Offer ===")
 		PrintPacket(p)
 
 	case dhcp4.Discover:
@@ -297,4 +303,105 @@ func SendDiscovery() {
 
 	log.Println("Success:", success)
 	log.Println("Packet:", acknowledgementpacket)
+}
+
+var OptionNameDict = map[dhcp4.OptionCode]string {
+255 : "End                                              ",
+0   : "Pad                                              ",
+1   : "OptionSubnetMask                                 ",
+2   : "OptionTimeOffset                                 ",
+3   : "OptionRouter                                     ",
+4   : "OptionTimeServer                                 ",
+5   : "OptionNameServer                                 ",
+6   : "OptionDomainNameServer                           ",
+7   : "OptionLogServer                                  ",
+8   : "OptionCookieServer                               ",
+9   : "OptionLPRServer                                  ",
+10  : "OptionImpressServer                              ",
+11  : "OptionResourceLocationServer                     ",
+12  : "OptionHostName                                   ",
+13  : "OptionBootFileSize                               ",
+14  : "OptionMeritDumpFile                              ",
+15  : "OptionDomainName                                 ",
+16  : "OptionSwapServer                                 ",
+17  : "OptionRootPath                                   ",
+18  : "OptionExtensionsPath                             ",
+//         :                                                              ",
+//         :                                                              	// IP Layer Parameters per Host",
+19  : "OptionIPForwardingEnableDisable                  ",
+20  : "OptionNonLocalSourceRoutingEnableDisable         ",
+21  : "OptionPolicyFilter                               ",
+22  : "OptionMaximumDatagramReassemblySize              ",
+23  : "OptionDefaultIPTimeToLive                        ",
+24  : "OptionPathMTUAgingTimeout                        ",
+25  : "OptionPathMTUPlateauTable                        ",
+//   " :                                                              ",
+//   " :                                                              	// IP Layer Parameters per Interface",
+26  : "OptionInterfaceMTU                               ",
+27  : "OptionAllSubnetsAreLocal                         ",
+28  : "OptionBroadcastAddress                           ",
+29  : "OptionPerformMaskDiscovery                       ",
+30  : "OptionMaskSupplier                               ",
+31  : "OptionPerformRouterDiscovery                     ",
+32  : "OptionRouterSolicitationAddress                  ",
+33  : "OptionStaticRoute                                ",
+//     ":                                                              ",
+//     ":                                                              	// Link Layer Parameters per Interface",
+34  : "OptionTrailerEncapsulation                       ",
+35  : "OptionARPCacheTimeout                            ",
+36  : "OptionEthernetEncapsulation                      ",
+//   " :                                                              ",
+//   " :                                                              	// TCP Parameters",
+37  : "OptionTCPDefaultTTL                              ",
+38  : "OptionTCPKeepaliveInterval                       ",
+39  : "OptionTCPKeepaliveGarbage                        ",
+//   " :                                                              ",
+//   " :                                                              	// Application and Service Parameters",
+40  : "OptionNetworkInformationServiceDomain            ",
+41  : "OptionNetworkInformationServers                  ",
+42  : "OptionNetworkTimeProtocolServers                 ",
+43  : "OptionVendorSpecificInformation                  ",
+44  : "OptionNetBIOSOverTCPIPNameServer                 ",
+45  : "OptionNetBIOSOverTCPIPDatagramDistributionServer ",
+46  : "OptionNetBIOSOverTCPIPNodeType                   ",
+47  : "OptionNetBIOSOverTCPIPScope                      ",
+48  : "OptionXWindowSystemFontServer                    ",
+49  : "OptionXWindowSystemDisplayManager                ",
+64  : "OptionNetworkInformationServicePlusDomain        ",
+65  : "OptionNetworkInformationServicePlusServers       ",
+68  : "OptionMobileIPHomeAgent                          ",
+69  : "OptionSimpleMailTransportProtocol                ",
+70  : "OptionPostOfficeProtocolServer                   ",
+71  : "OptionNetworkNewsTransportProtocol               ",
+72  : "OptionDefaultWorldWideWebServer                  ",
+73  : "OptionDefaultFingerServer                        ",
+74  : "OptionDefaultInternetRelayChatServer             ",
+75  : "OptionStreetTalkServer                           ",
+76  : "OptionStreetTalkDirectoryAssistance              ",
+//    "     :                                                              ",
+//    "     :                                                              	// DHCP Extensions",
+50  : "OptionRequestedIPAddress                         ",
+51  : "OptionIPAddressLeaseTime                         ",
+52  : "OptionOverload                                   ",
+53  : "OptionDHCPMessageType                            ",
+54  : "OptionServerIdentifier                           ",
+55  : "OptionParameterRequestList                       ",
+56  : "OptionMessage                                    ",
+57  : "OptionMaximumDHCPMessageSize                     ",
+58  : "OptionRenewalTimeValue                           ",
+59  : "OptionRebindingTimeValue                         ",
+60  : "OptionVendorClassIdentifier                      ",
+61  : "OptionClientIdentifier                           ",
+//   " :                                                              ",
+66  : "OptionTFTPServerName                             ",
+67  : "OptionBootFileName                               ",
+//   " :                                                              ",
+77  : "OptionUserClass                                  ",
+//   " :                                                              ",
+93  : "OptionClientArchitecture                         ",
+//   " :                                                              ",
+100 : "OptionTZPOSIXString                              ",
+101 : "OptionTZDatabaseString                           ",
+//   " :                                                              ",
+121 : "OptionClasslessRouteFormat",
 }
