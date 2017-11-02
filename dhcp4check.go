@@ -4,7 +4,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/d2g/dhcp4client"
+	"github.com/mingzhaodotname/dhcp4client"
 )
 
 func main() {
