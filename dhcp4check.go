@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"os"
 
 	"github.com/mingzhaodotname/dhcp4client"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"flag"
 	"strconv"
 	"github.com/mingzhaodotname/dhcp4"
+	"strings"
 )
 
 func main() {
@@ -185,7 +187,22 @@ func PrintPacket(p dhcp4.Packet) {
 	options := p.ParseOptions()
 	for code, v := range options {
 		name := OptionNameDict[code]
-		log.Println(name, " : ", v)
+		if (strings.Contains(name, "OptionBootFileName") || strings.Contains(name, "OptionTFTPServerName") || strings.Contains(name, "OptionDomainName ")) {
+			log.Println(code, name, " : ", string(v[:]))
+		} else if strings.Contains(name, "OptionDHCPMessageType") {
+			message_type := ""
+			if v[0] == 1 {
+			message_type = "Discovery"
+			} else if v[0] == 2 {
+			message_type = "Offer"
+			} else {
+			message_type = "other"
+			}
+
+			log.Println(code, name, " : ", message_type, v)
+		} else {
+			log.Println(code, name, " : ", v)
+		}
 	}
 }
 
@@ -195,6 +212,7 @@ func (h *DHCPHandler) ServeDHCP(p dhcp4.Packet, msgType dhcp4.MessageType, optio
 	case dhcp4.Offer:
 		log.Println("=== dhcp Offer ===")
 		PrintPacket(p)
+		os.Exit(0)
 
 	case dhcp4.Discover:
 		log.Println("=== minglog: dhcp Discover", p, options)
