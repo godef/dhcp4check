@@ -1,5 +1,12 @@
 package main
 
+// TODO:
+//   1. better output formatting
+//   2. not using a server to listen to OFFER packet
+//   3. XID for discovery packet
+//   4. Investigate how to write to broadcast 255.255.255.255
+//   5. Investigate why binding to a local address can not listen to broadcast reply
+
 import (
 	"log"
 	"net"
@@ -23,6 +30,9 @@ func main() {
 	mac := flag.String("mac", "", "MAC address")
 	flag.Parse()
 	log.Println("CIDR: ", *cidr)
+	log.Println("MAC: ", *mac)
+
+	// Get broadcast IP
 	ip, ipnet, err := net.ParseCIDR(*cidr)
 	if err != nil {
 		log.Fatal("error: ", err)
@@ -37,11 +47,10 @@ func main() {
 	ip[13] = ipnet.Mask[1] | ip[13]
 	ip[14] = ipnet.Mask[2] | ip[14]
 	ip[15] = ipnet.Mask[3] | ip[15]
-	log.Println("ip: ", ip, ", mask: ", ipnet.Mask, ", ipnet.ip: ", ipnet.IP)
+	log.Println("broadcast ip: ", ip, ", mask: ", ipnet.Mask, ", ipnet.ip: ", ipnet.IP)
 
 	//ipnet.Mask
 
-	log.Println("MAC: ", *mac)
 	//go SendDiscovery()
 	ExampleHandler(ip, *mac)
 
@@ -76,10 +85,10 @@ func ListenAndServe(handler Handler, ip net.IP, mac string) error {
 		return err
 	}
 	defer l.Close()
-	log.Println("l.LocalAddr(): ", l.LocalAddr())
+	log.Println("LocalAddr(): ", l.LocalAddr())
 
 	// Write DHCP request packet
-	log.Println("sending discovery packet")
+	log.Println("Sending discovery packet to IP: ", ip)
 	dp := DiscoverPacket(mac);
 	//addr := &net.UDPAddr{IP: net.IPv4(192, 168, 1, 255), Port: 67}
 	addr := &net.UDPAddr{IP: ip, Port: 67}
@@ -87,7 +96,7 @@ func ListenAndServe(handler Handler, ip net.IP, mac string) error {
 	if _, e := l.WriteTo(dp, addr); e != nil {
 		return e
 	}
-	log.Println("sent discovery packet successfully.")
+	log.Println("Sent discovery packet successfully.")
 
 	return Serve(l, handler)
 }
@@ -108,7 +117,7 @@ func Serve(conn ServeConn, handler Handler) error {
 	buffer := make([]byte, 1500)
 	for {
 		n, addr, err := conn.ReadFrom(buffer)
-		log.Println("DHCP server address: ", addr)
+		log.Println("Receiving packet from: ", addr)
 		if err != nil {
 			return err
 		}
